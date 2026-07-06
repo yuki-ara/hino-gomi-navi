@@ -343,29 +343,55 @@ const qEl = document.getElementById('q');
 const suggestEl = document.getElementById('suggest');
 document.getElementById('idxCount').textContent = ITEMS.length + '件';
 
+const CATEGORY_ALIASES = {
+  "雑誌":"雑誌・雑紙類", "雑紙":"雑誌・雑紙類", "本":"雑誌・雑紙類", "書籍":"雑誌・雑紙類",
+  "缶":"かん", "瓶":"びん", "ビン":"びん",
+  "新聞紙":"新聞", "古新聞":"新聞",
+  "プラゴミ":"プラスチック類ごみ", "プラごみ":"プラスチック類ごみ", "プラ":"プラスチック類ごみ",
+  "粗大":"粗大ごみ", "剪定":"剪定枝（戸別収集）", "枝":"剪定枝（戸別収集）"
+};
+function findAliasMatches(v){
+  const seen = new Set(); const out = [];
+  for(const key in CATEGORY_ALIASES){
+    if(key.includes(v) || v.includes(key)){
+      const cat = CATEGORY_ALIASES[key];
+      if(seen.has(cat)) continue;
+      seen.add(cat);
+      out.push([key, cat, '', `「${key}」で検索された方向けの分類ショートカットです。個別の品目名でも検索できます。`]);
+    }
+  }
+  return out;
+}
+
+let currentMatches = [];
+
 qEl.addEventListener('input', ()=>{
   const v = qEl.value.trim();
-  if(!v){ suggestEl.classList.remove('open'); suggestEl.innerHTML=''; return; }
-  // 1st pass: 品目名に含まれるもの／2nd pass: 見つからなければ注意点・備考も検索
+  if(!v){ suggestEl.classList.remove('open'); suggestEl.innerHTML=''; currentMatches=[]; return; }
+  // 1st: 品目名に含まれるもの／2nd: カテゴリの一般名称エイリアス／3rd: 注意点・備考
   const nameMatches = ITEMS.filter(i => i[0].includes(v));
+  const aliasMatches = findAliasMatches(v);
   const noteMatches = ITEMS.filter(i => !nameMatches.includes(i) && ((i[2]&&i[2].includes(v)) || (i[3]&&i[3].includes(v))));
-  const matches = nameMatches.concat(noteMatches).slice(0,8);
-  if(matches.length===0){
+  currentMatches = nameMatches.concat(aliasMatches, noteMatches).slice(0,8);
+  if(currentMatches.length===0){
     suggestEl.innerHTML = '<button disabled style="color:#A79E8C;cursor:default;">該当する品目が見つかりません（表記ゆれの可能性があります）</button>';
     suggestEl.classList.add('open');
     return;
   }
-  suggestEl.innerHTML = matches.map((m)=>{
+  suggestEl.innerHTML = currentMatches.map((m,idx)=>{
     const grp = ITEM_CAT_TO_GROUP[m[1]] || 'shigai';
-    const viaNote = !m[0].includes(v);
-    return `<button data-idx="${ITEMS.indexOf(m)}"><span class="dot" style="background:${GROUP_COLOR[grp]}"></span>${escapeHtml(m[0])}${viaNote ? '<span class="catname" style="color:var(--hanko)">備考に一致</span>' : ''}<span class="catname">${escapeHtml(m[1])}</span></button>`;
+    const isAlias = aliasMatches.includes(m);
+    const viaNote = !isAlias && !m[0].includes(v);
+    const tag = isAlias ? '<span class="catname" style="color:var(--ai)">分類ショートカット</span>' : (viaNote ? '<span class="catname" style="color:var(--hanko)">備考に一致</span>' : '');
+    return `<button data-idx="${idx}"><span class="dot" style="background:${GROUP_COLOR[grp]}"></span>${escapeHtml(m[0])}${tag}<span class="catname">${escapeHtml(m[1])}</span></button>`;
   }).join('');
   suggestEl.classList.add('open');
 });
 suggestEl.addEventListener('click', (e)=>{
   const btn = e.target.closest('button[data-idx]');
   if(!btn) return;
-  const item = ITEMS[Number(btn.dataset.idx)];
+  const item = currentMatches[Number(btn.dataset.idx)];
+  if(!item) return;
   qEl.value = item[0];
   suggestEl.classList.remove('open');
   showResult(item);
